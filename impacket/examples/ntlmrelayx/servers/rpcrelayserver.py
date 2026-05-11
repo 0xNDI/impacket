@@ -227,13 +227,13 @@ class RPCRelayServer(Thread):
                 authenticateMessage = ntlm.NTLMAuthChallengeResponse()
                 authenticateMessage.fromString(token)
 
-                # Only skip to next if the login actually failed, not if it was just anonymous login
-                if authenticateMessage['user_name'] == b'':
-                    # Anonymous login
-                    LOG.error('(RPC): Empty username ... just waiting')
-                    return None
-                    # LOG.error('Empty username ... answering with %s' % rpc_status_codes[MSRPC_STATUS_CODE_RPC_S_ACCESS_DENIED])
-                    # return self.send_error(MSRPC_STATUS_CODE_RPC_S_ACCESS_DENIED)
+                # Allow empty-username NTLM auth through for local RPC coercion relay
+                #if authenticateMessage['user_name'] == b'':
+                #    # Anonymous login
+                #    LOG.error('(RPC): Empty username ... just waiting')
+                #    return None
+                #    # LOG.error('Empty username ... answering with %s' % rpc_status_codes[MSRPC_STATUS_CODE_RPC_S_ACCESS_DENIED])
+                #    # return self.send_error(MSRPC_STATUS_CODE_RPC_S_ACCESS_DENIED)
 
                 try:
                     self.do_ntlm_auth(token, authenticateMessage)
