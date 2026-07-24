@@ -5386,9 +5386,11 @@ class NetLogon:
         request['LogonInformation']['tag'] = nrpc.NETLOGON_LOGON_INFO_CLASS.NetlogonNetworkTransitiveInformation
         request['LogonInformation']['LogonNetworkTransitive']['Identity']['LogonDomainName'] = authenticateMessage['domain_name'].decode('utf-16le')
 
-        # MS-APDS: 3.1.5.2 NTLM Network Logon: If the account is a computer account, the subauthentication package is not verified, and the K bit of LogonInformation.LogonNetwork.Identity.ParameterControl is not set, then return STATUS_NOLOGON_WORKSTATION_TRUST_ACCOUNT.<21>
-        # MS-NRPC: 2.2.1.4.15 NETLOGON_LOGON_IDENTITY_INFO: K=20
-        request['LogonInformation']['LogonNetworkTransitive']['Identity']['ParameterControl'] = 2**11
+        # MS-NRPC 2.2.1.4.15 NETLOGON_LOGON_IDENTITY_INFO ParameterControl flags:
+        #   bit 5  (0x20)  MSV1_0_ALLOW_SERVER_TRUST_ACCOUNT      — accept DC machine accounts
+        #   bit 11 (0x800) MSV1_0_ALLOW_WORKSTATION_TRUST_ACCOUNT  — accept workstation machine accounts
+        # Both are needed so pass-through validation works regardless of the authenticating account type.
+        request['LogonInformation']['LogonNetworkTransitive']['Identity']['ParameterControl'] = 0x820
         request['LogonInformation']['LogonNetworkTransitive']['Identity']['UserName'] = authenticateMessage['user_name'].decode('utf-16le')
         request['LogonInformation']['LogonNetworkTransitive']['Identity']['Workstation'] = ''
 
