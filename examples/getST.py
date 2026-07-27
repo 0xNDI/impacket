@@ -93,8 +93,12 @@ class GETST:
         self.__proxydomain = options.proxydomain
         self.__impersonatedc = options.impersonatedc
         if options.impersonate != None:
-            self.__impersonatedomain = options.impersonate.split('@')[1]
-            self.__impersonateuser = options.impersonate.split('@')[0]
+            if '@' in options.impersonate:
+                self.__impersonateuser = options.impersonate.split('@')[0]
+                self.__impersonatedomain = options.impersonate.split('@')[1]
+            else:
+                self.__impersonateuser = options.impersonate
+                self.__impersonatedomain = self.__domain
             # Populate DCs
             if not options.proxy and self.__domain == self.__impersonatedomain:
                 if self.__kdcHost == None and self.__impersonatedc != None:
@@ -1144,8 +1148,6 @@ if __name__ == '__main__':
         else:
             if options.spn is None:
                 parser.error("argument -spn is required, except when -self is set")
-            if options.impersonate is not None and options.proxydomain is None:
-                parser.error("argument -proxydomain required")
 
     if options.u2u is True and (options.self is False and options.impersonate is None):
         parser.error("-u2u is not implemented yet without being combined to S4U. Can't obtain a plain User-to-User ticket")
@@ -1157,6 +1159,9 @@ if __name__ == '__main__':
     logger.init(options.ts, options.debug)
 
     domain, username, password, _, _, options.k = parse_identity(options.identity, options.hashes, options.no_pass, options.aesKey, options.k)
+
+    if options.proxydomain is None:
+        options.proxydomain = domain
 
     if domain == '':
         logging.critical('Domain should be specified!')
