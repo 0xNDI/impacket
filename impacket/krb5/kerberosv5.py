@@ -366,7 +366,7 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
 
     return tgt, cipher, key, sessionKey
 
-def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, renew = False, noRec = False):
+def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, renew = False):
 
     # Decode the TGT
     try:
@@ -493,13 +493,13 @@ def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, renew =
     spn = Principal()
     spn.from_asn1(res['ticket'], 'realm', 'sname')
 
-    if str(spn).split('@')[0].lower() == str(serverName).split('@')[0].lower() or noRec:
+    if spn.components[0] == serverName.components[0]:
         # Yes.. bye bye
         return r, cipher, sessionKey, newSessionKey
     else:
         # Let's extract the Ticket, change the domain and keep asking
         domain = spn.components[1]
-        return getKerberosTGS(serverName, domain, None, r, cipher, newSessionKey)
+        return getKerberosTGS(serverName, domain, kdcHost, r, cipher, newSessionKey)
 
 ################################################################################
 # DCE RPC Helpers
