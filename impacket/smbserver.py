@@ -5391,6 +5391,7 @@ class NetLogon:
         #   bit 11 (0x800) MSV1_0_ALLOW_WORKSTATION_TRUST_ACCOUNT  — accept workstation machine accounts
         # Both are needed so pass-through validation works regardless of the authenticating account type.
         request['LogonInformation']['LogonNetworkTransitive']['Identity']['ParameterControl'] = 0x820
+        # (Equivalent to 0x800 | 0x20; matches fortra/impacket PR #2239.)
         request['LogonInformation']['LogonNetworkTransitive']['Identity']['UserName'] = authenticateMessage['user_name'].decode('utf-16le')
         request['LogonInformation']['LogonNetworkTransitive']['Identity']['Workstation'] = ''
 
