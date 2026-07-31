@@ -878,6 +878,13 @@ class GETST:
         newSessionKey = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'].asOctets())
         newCipher = _enctype_table[int(encTGSRepPart['key']['keytype'])]
 
+        # DMSA: the request intentionally targets krbtgt/<domain> and the key
+        # package was already parsed above, so this response is final. Return
+        # now; otherwise the cross-realm referral logic below sees the krbtgt
+        # sname and recurses into doS4U2Self forever (same-domain loop).
+        if self.__dmsa:
+            return r, newCipher, sessionKey, newSessionKey
+
         # Check if we get the requested serviceName: If not this is for another KDC
 
         if spn.components[0].lower() != "krbtgt":
