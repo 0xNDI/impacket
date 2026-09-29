@@ -26,7 +26,7 @@ from impacket import version
 from impacket.dcerpc.v5 import transport
 from impacket.dcerpc.v5.epm import hept_map
 from impacket.dcerpc.v5.gkdi import MSRPC_UUID_GKDI, GkdiGetKey, GroupKeyEnvelope
-from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_LEVEL_PKT_INTEGRITY, RPC_C_AUTHN_LEVEL_PKT_PRIVACY
+from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_GSS_NEGOTIATE, RPC_C_AUTHN_LEVEL_PKT_INTEGRITY, RPC_C_AUTHN_LEVEL_PKT_PRIVACY
 from impacket.dpapi_ng import EncryptedPasswordBlob, KeyIdentifier, compute_kek, create_sd, decrypt_plaintext, unwrap_cek
 from impacket.examples import logger
 from impacket.examples.utils import parse_identity, ldap_login
@@ -36,6 +36,7 @@ from pyasn1_modules import rfc5652
 import argparse
 import json
 import logging
+import struct
 import sys
 
 class GetLAPSPassword:
@@ -76,6 +77,7 @@ class GetLAPSPassword:
         self.__targetComputer = cmdLineOptions.computer
         self.__outputFile = cmdLineOptions.outputfile
         self.__ldaps_flag = cmdLineOptions.ldaps_flag
+        self.__history = cmdLineOptions.history
         self.__KDSCache = {}
 
         if cmdLineOptions.hashes is not None:
@@ -121,6 +123,10 @@ class GetLAPSPassword:
                 rpctransport.setRemoteName(self.__target)
 
             dce = rpctransport.get_dce_rpc()
+            if self.__doKerberos:
+                # The plain TCP transport ignores set_kerberos(), so the auth type must be set explicitly,
+                # otherwise the bind defaults to NTLM and fails on domains where NTLM is disabled.
+                dce.set_auth_type(RPC_C_AUTHN_GSS_NEGOTIATE)
             dce.set_auth_level(RPC_C_AUTHN_LEVEL_PKT_INTEGRITY)
             dce.set_auth_level(RPC_C_AUTHN_LEVEL_PKT_PRIVACY)
             logging.debug("Connecting to %s" % stringBinding)
@@ -175,8 +181,9 @@ class GetLAPSPassword:
             paged_search_control = ldapasn1.SimplePagedResultsControl(criticality=True, size=1000)
 
             resp = ldapConnection.search(searchFilter=searchFilter,
-                                         attributes=['msLAPS-EncryptedPassword', 'msLAPS-PasswordExpirationTime', 'msLAPS-Password', 'sAMAccountName', \
-                                         'ms-Mcs-AdmPwdExpirationTime', 'ms-MCS-AdmPwd'],
+                                         attributes=['msLAPS-EncryptedPassword', 'msLAPS-PasswordExpirationTime', 'msLAPS-Password', 'sAMAccountName'] + \
+                                         (['msLAPS-EncryptedPasswordHistory'] if self.__history else []) + \
+                                         ['ms-Mcs-AdmPwdExpirationTime', 'ms-MCS-AdmPwd'],
                                          searchControls=[paged_search_control])
 
         except ldap.LDAPSearchError as e:
@@ -189,6 +196,7 @@ class GetLAPSPassword:
                 raise
 
         entries = []
+        lapsHistoryEntries = []
         
         logging.debug('Total of records returned %d' % len(resp))
 
@@ -206,6 +214,7 @@ class GetLAPSPassword:
                 lapsPasswordExpiration = None
                 lapsUsername = None
                 lapsPassword = None
+                lapsHistory = []
                 lapsv2 = False
                 for attribute in item['attributes']:
                     if str(attribute['type']) == 'sAMAccountName':
@@ -222,10 +231,32 @@ class GetLAPSPassword:
                             lapsPasswordExpiration = datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))).strftime('%Y-%m-%d %H:%M:%S')
                     elif str(attribute['type']) == 'ms-Mcs-AdmPwd':
                         lapsPassword = attribute['vals'][0].asOctets().decode('utf-8')
+                    elif str(attribute['type']) == 'msLAPS-EncryptedPasswordHistory':
+                        lapsv2 = True
+                        # Multi-valued attribute; each value is an EncryptedPasswordBlob:
+                        # <4B timestamp_low><4B timestamp_high><4B length><4B flags><length bytes blob>
+                        for historyValue in attribute['vals']:
+                            rawHistory = bytes(historyValue)
+                            offset = 0
+                            while offset + 16 <= len(rawHistory):
+                                blobLength = struct.unpack('<I', rawHistory[offset + 8:offset + 12])[0]
+                                blob = rawHistory[offset:offset + 16 + blobLength]
+                                offset += 16 + blobLength
+                                try:
+                                    plaintext = self.getLAPSv2Decrypt(blob)
+                                    r = json.loads(plaintext[:-18].decode('utf-16le'))
+                                    try:
+                                        changed = datetime.fromtimestamp(self.getUnixTime(int(r["t"], 16))).strftime('%Y-%m-%d %H:%M:%S')
+                                    except (ValueError, KeyError, OverflowError, OSError):
+                                        changed = r.get("t", "N/A")
+                                    lapsHistory.append([sAMAccountName, changed, r["n"], r["p"]])
+                                except Exception as e:
+                                    logging.error('Skipping history item, cannot process due to error %s' % str(e))
                 if sAMAccountName is not None and lapsPassword is not None:
                     entry = [sAMAccountName,lapsUsername, lapsPassword, lapsPasswordExpiration, str(lapsv2)]
                     entry = [element if element is not None else 'N/A' for element in entry]
                     entries.append(entry)
+                lapsHistoryEntries.extend(lapsHistory)
             except Exception as e:
                 logging.error('Skipping item, cannot process due to error %s' % str(e))
                 pass
@@ -239,6 +270,10 @@ class GetLAPSPassword:
         
         self.printTable(entries,['Host','LAPS Username','LAPS Password','LAPS Password Expiration', 'LAPSv2'], self.__outputFile)
 
+        if self.__history and len(lapsHistoryEntries) > 0:
+            print()
+            self.printTable(lapsHistoryEntries,['Host','Password Changed','LAPS Username','LAPS Password (History)'], self.__outputFile)
+
 # Process command-line arguments.
 if __name__ == '__main__':
     print((version.BANNER))
@@ -247,6 +282,7 @@ if __name__ == '__main__':
 
     parser.add_argument('target', action='store', help='domain[/username[:password]]')
     parser.add_argument('-computer', action='store', metavar='computername', help='Target a specific computer by its name')
+    parser.add_argument('-history', action='store_true', help='Also decrypt and show the LAPSv2 password history (msLAPS-EncryptedPasswordHistory)')
 
     parser.add_argument('-ts', action='store_true', help='Adds timestamp to every logging output')
     parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
