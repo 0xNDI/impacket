@@ -18,6 +18,8 @@
 #  Dirk-jan Mollema / Fox-IT (https://www.fox-it.com)
 #
 from impacket.examples.utils import parse_credentials
+from pathlib import Path
+from impacket import LOG
 
 
 class NTLMRelayxConfig:
@@ -99,6 +101,10 @@ class NTLMRelayxConfig:
 
         # WebDAV options
         self.serve_image = False
+
+        # IMAP relay server options
+        self.imap_server_cert = None
+        self.imap_server_key = None
 
         # AD CS attack options
         self.isADCSAttack = False
@@ -311,6 +317,22 @@ class NTLMRelayxConfig:
 
     def setAltSid(self, altSid):
         self.altSid = altSid
+
+    def set_imap_server_cert(self, imap_server_cert_path: Path):
+        try:
+            with open(imap_server_cert_path, 'rb') as f:
+                self.imap_server_cert = f.read().strip()
+        except FileNotFoundError:
+            LOG.error("(IMAP) Certificate file not found")
+            exit(1)
+
+    def set_imap_server_key(self, imap_server_key_path: Path):
+        try:
+            with open(imap_server_key_path, 'rb') as f:
+                self.imap_server_key = f.read().strip()
+        except FileNotFoundError:
+            LOG.error("(IMAP) Private key file not found")
+            exit(1)
 
 def parse_listening_ports(value):
     ports = set()

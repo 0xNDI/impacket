@@ -50,10 +50,11 @@ from urllib.parse import urlparse
 import json
 from time import sleep
 from threading import Thread
+from pathlib import Path
 
 from impacket import version
 from impacket.examples import logger
-from impacket.examples.ntlmrelayx.servers import SMBRelayServer, HTTPRelayServer, WCFRelayServer, RAWRelayServer, RPCRelayServer, WinRMRelayServer, WinRMSRelayServer, MSSQLRelayServer, RDPRelayServer 
+from impacket.examples.ntlmrelayx.servers import SMBRelayServer, HTTPRelayServer, WCFRelayServer, RAWRelayServer, RPCRelayServer, WinRMRelayServer, WinRMSRelayServer, MSSQLRelayServer, RDPRelayServer, IMAPRelayServer 
 from impacket.examples.ntlmrelayx.utils.config import NTLMRelayxConfig, parse_listening_ports
 from impacket.examples.ntlmrelayx.utils.targetsutils import TargetsProcessor, TargetsFileWatcher
 from impacket.examples.ntlmrelayx.servers.socksserver import SOCKS
@@ -258,6 +259,11 @@ def start_servers(options, threads):
                 c.setMSSQLDb(options.mssql_db)
         elif server is RDPRelayServer:
             c.setListeningPort(options.rdp_port)
+        elif server is IMAPRelayServer:
+            c.setListeningPort(options.imap_port)
+            if options.imap_server_cert and options.imap_server_key:
+                c.set_imap_server_cert(options.imap_server_cert)
+                c.set_imap_server_key(options.imap_server_key)
 
         s = server(c)
         s.start()
@@ -313,6 +319,7 @@ if __name__ == '__main__':
     serversoptions.add_argument('--no-winrm-server', action='store_true', help='Disables the WinRM server')
     serversoptions.add_argument('--no-mssql-server', action='store_true', help='Disables the MSSQL server')
     serversoptions.add_argument('--no-rdp-server', action='store_true', help='Disables the RDP server')
+    serversoptions.add_argument('--no-imap-server', action='store_true', help='Disables the IMAP server')
     
     parser.add_argument('--smb-port', type=int, help='Port to listen on smb server', default=445)
     parser.add_argument('--http-port', help='Port(s) to listen on HTTP server. Can specify multiple ports by separating them with `,`, and ranges with `-`. Ex: `80,8000-8010`', default="80")
@@ -321,6 +328,13 @@ if __name__ == '__main__':
     parser.add_argument('--rpc-port', type=int, help='Port to listen on rpc server', default=135)
     parser.add_argument('--mssql-port', type=int, help='Port to listen on mssql server', default=1433)
     parser.add_argument('--rdp-port', type=int, help='Port to listen on rdp server', default=3389)
+    parser.add_argument('--imap-port', type=int, help='Port to listen on imap server', default=143)
+
+    imapserveroptions = parser.add_argument_group("IMAP server options")
+    imapserveroptions.add_argument('--imap-server-cert', required=False, type=Path,
+                                   help="Path to IMAP server certificate (in PEM format)")
+    imapserveroptions.add_argument('--imap-server-key', required=False, type=Path,
+                                   help="Path to IMAP server private key (in PEM format)")
 
     parser.add_argument('--no-multirelay', action="store_true", required=False, help='If set, disable multi-host relay (SMB and HTTP servers)')
     parser.add_argument('--keep-relaying', action="store_true", required=False, help='If set, keeps relaying to a target even after a successful connection on it')
@@ -564,6 +578,9 @@ if __name__ == '__main__':
 
     if not options.no_rdp_server:
         RELAY_SERVERS.append(RDPRelayServer)
+
+    if not options.no_imap_server:
+        RELAY_SERVERS.append(IMAPRelayServer)
 
     if targetSystem is not None and options.w:
         watchthread = TargetsFileWatcher(targetSystem)

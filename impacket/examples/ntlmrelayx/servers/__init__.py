@@ -17,3 +17,4 @@ from impacket.examples.ntlmrelayx.servers.winrmrelayserver import WinRMRelayServ
 from impacket.examples.ntlmrelayx.servers.winrmsrelayserver import WinRMSRelayServer
 from impacket.examples.ntlmrelayx.servers.rdprelayserver import RDPRelayServer
 from impacket.examples.ntlmrelayx.servers.mssqlrelayserver import MSSQLRelayServer
+from impacket.examples.ntlmrelayx.servers.imaprelayserver import IMAPRelayServer
